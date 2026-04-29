@@ -213,9 +213,7 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Reminder set for {t} ⏰")
 
 
-token = os.environ.get("TELEGRAM_BOT_TOKEN")
-if not token:
-    raise RuntimeError("TELEGRAM_BOT_TOKEN environment variable is not set")
+token = "8613051004:AAEfyfqLMq7JS6zTWWCzx9_vhYgWDhO-FT8"
 
 app = ApplicationBuilder().token(token).build()
 
