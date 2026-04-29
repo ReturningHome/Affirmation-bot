@@ -1,14 +1,13 @@
 import os
 import random
 import sqlite3
-from datetime import time
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder,
+    Updater,
     CommandHandler,
     MessageHandler,
-    ContextTypes,
-    filters,
+    Filters,
+    CallbackContext,
 )
 
 # Database setup
@@ -30,30 +29,33 @@ CREATE TABLE IF NOT EXISTS affirmations (
 )
 """)
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS reminder_times (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    time TEXT
-)
-""")
-
 conn.commit()
 
 default_affirmations_en = [
-    "I am powerful 💫",
+    "You are capable of amazing things. Believe in yourself today! 🌟",
+    "Every day is a fresh start. You have the power to make it great! 🌅",
+    "You are enough, just as you are. Keep going! 💪",
+    "Your potential is limitless. Dream big and take action! 🚀",
+    "You radiate positivity and attract good things into your life! ✨",
+    "Challenges make you stronger. You can handle anything! 🔥",
+    "You deserve love, happiness, and all the good things in life! 💛",
+    "Today is full of possibilities. Make the most of every moment! 🌈",
+    "You are growing every day, even when you can't see it! 🌱",
+    "You are loved more than you know. You matter deeply! ❤️",
 ]
 
 default_affirmations_fa = [
-    "من قدرتمند هستم 💫",
+    "تو توانایی انجام کارهای شگفت‌انگیز را داری. به خودت ایمان داشته باش! 🌟",
+    "هر روز یک شروع تازه است. تو قدرت درخشیدن داری! 🌅",
+    "همان‌طور که هستی کافی هستی. ادامه بده! 💪",
+    "پتانسیل تو بی‌حد است. بزرگ رویا بپرور و قدم بردار! 🚀",
+    "تو انرژی مثبت داری و چیزهای خوب را به سمت خودت جذب می‌کنی! ✨",
+    "چالش‌ها تو را قوی‌تر می‌کنند. از پس هر چیزی برمی‌آیی! 🔥",
+    "تو لایق عشق، شادی و تمام خوبی‌های زندگی هستی! 💛",
+    "امروز پر از فرصت‌های جدید است. از هر لحظه بهره ببر! 🌈",
+    "هر روز در حال رشد هستی، حتی وقتی که نمی‌بینی! 🌱",
+    "بیشتر از آنچه فکر می‌کنی دوست داشته می‌شوی. وجودت مهم است! ❤️",
 ]
-
-
-def get_text(user_id, en_text, fa_text):
-    cursor.execute("SELECT language FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    lang = row[0] if row else "en"
-    return fa_text if lang == "fa" else en_text
 
 
 def get_lang(user_id):
@@ -62,188 +64,152 @@ def get_lang(user_id):
     return row[0] if row else "en"
 
 
+def t(user_id, en, fa):
+    return fa if get_lang(user_id) == "fa" else en
+
+
 def get_affs(user_id):
     cursor.execute("SELECT text FROM affirmations WHERE user_id = ?", (user_id,))
     return [r[0] for r in cursor.fetchall()]
 
 
 def lang_keyboard():
-    keyboard = [["English 🇬🇧", "فارسی 🇮🇷"]]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    return ReplyKeyboardMarkup([["English 🇬🇧", "فارسی 🇮🇷"]], resize_keyboard=True, one_time_keyboard=True)
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def start(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
-    cursor.execute(
-        "INSERT OR IGNORE INTO users (user_id, language) VALUES (?, ?)",
-        (user_id, "en")
-    )
+    cursor.execute("INSERT OR IGNORE INTO users (user_id, language) VALUES (?, ?)", (user_id, "en"))
     conn.commit()
-    text = get_text(
-        user_id,
-        "Welcome 🌞\n\nI'll help you stay consistent with your affirmations 💫\n\n"
-        "👉 First, choose your language:\n/language\n\n"
-        "👉 Then set your reminder time:\n/settime 09:00\n\n"
-        "👉 Add your own affirmation:\n/add I am confident",
-        "سلام 🌞\n\nمن بهت کمک می‌کنم جملات تاکیدی رو منظم انجام بدی 💫\n\n"
-        "👉 اول زبان رو انتخاب کن:\n/language\n\n"
-        "👉 بعد زمان یادآور:\n/settime 09:00\n\n"
-        "👉 جمله خودتو اضافه کن:\n/add من قوی هستم"
-    )
-    await update.message.reply_text(text)
+    update.message.reply_text(t(user_id,
+        "🌸 Welcome!\n\nCommands:\n/language — Choose language\n/affirmation — Get affirmation\n/add your text — Add your own\n/list — View your affirmations\n/settime 08:00 — Set daily reminder\n/cancelreminder — Cancel reminder",
+        "🌸 خوش آمدید!\n\nدستورات:\n/language — انتخاب زبان\n/affirmation — دریافت تأییدیه\n/add متن — افزودن تأییدیه\n/list — دیدن تأییدیه‌ها\n/settime 08:00 — تنظیم یادآور\n/cancelreminder — لغو یادآور"
+    ))
 
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    text = get_text(
-        user_id,
-        "🤖 Here's how to use me:\n\n"
-        "/start - Start the bot\n/language - Choose language\n"
-        "/add your affirmation - Add your own\n/list - View your affirmations\n"
-        "/send - Get one now\n/settime HH:MM - Set reminder\n\nExample:\n/settime 09:00",
-        "🤖 راهنمای استفاده:\n\n"
-        "/start - شروع ربات\n/language - انتخاب زبان\n"
-        "/add متن - افزودن جمله تاکیدی\n/list - دیدن جملات\n"
-        "/send - دریافت جمله\n/settime HH:MM - تنظیم یادآور\n\nمثال:\n/settime 09:00"
-    )
-    await update.message.reply_text(text)
-
-
-async def language(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+def language(update: Update, context: CallbackContext):
+    update.message.reply_text(
         "Choose your language / زبان خود را انتخاب کنید:",
         reply_markup=lang_keyboard()
     )
 
 
-async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def set_language(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     text = update.message.text
     if "English" in text:
         cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", ("en", user_id))
         conn.commit()
-        await update.message.reply_text("Language set to English ✅")
+        update.message.reply_text("✅ Language set to English!")
     elif "فارسی" in text:
         cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", ("fa", user_id))
         conn.commit()
-        await update.message.reply_text("زبان تنظیم شد ✅")
+        update.message.reply_text("✅ زبان فارسی انتخاب شد!")
 
 
-async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def affirmation(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    lang = get_lang(user_id)
+    defaults = default_affirmations_fa if lang == "fa" else default_affirmations_en
+    affs = get_affs(user_id) + defaults
+    update.message.reply_text(random.choice(affs))
+
+
+def add(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     text = " ".join(context.args)
     if not text:
-        await update.message.reply_text(get_text(user_id,
-            "Please write an affirmation after /add",
-            "لطفاً بعد از /add یک تأییدیه بنویسید"
+        update.message.reply_text(t(user_id,
+            "Please write after /add. Example: /add I am confident",
+            "بعد از /add بنویسید. مثال: /add من قوی هستم"
         ))
         return
     cursor.execute("INSERT INTO affirmations (user_id, text) VALUES (?, ?)", (user_id, text))
     conn.commit()
-    await update.message.reply_text(get_text(user_id, "Added ✨", "اضافه شد ✨"))
-    await update.message.reply_text(get_text(user_id,
-        "Love it 💫 Want me to remind you daily? Use /settime",
-        "عالیه 💫 میخوای یادآوری تنظیم کنم؟ /settime"
-    ))
+    update.message.reply_text(t(user_id, "✅ Added!", "✅ اضافه شد!"))
 
 
-async def list_affirmations(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def list_affirmations(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     affs = get_affs(user_id)
     if not affs:
-        await update.message.reply_text(get_text(user_id,
-            "No affirmations yet.", "هنوز تأییدیه‌ای ندارید."
-        ))
+        update.message.reply_text(t(user_id, "No affirmations yet.", "هنوز تأییدیه‌ای ندارید."))
     else:
-        await update.message.reply_text("\n".join(f"• {a}" for a in affs))
+        update.message.reply_text("\n".join(f"• {a}" for a in affs))
 
 
-async def send_affirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
+def send_reminder(context: CallbackContext):
+    user_id = context.job.context
     lang = get_lang(user_id)
     defaults = default_affirmations_fa if lang == "fa" else default_affirmations_en
     affs = get_affs(user_id) + defaults
-    await update.message.reply_text(random.choice(affs))
+    header = "🌸 یادآور روزانه:\n\n" if lang == "fa" else "🌸 Your daily affirmation:\n\n"
+    context.bot.send_message(chat_id=user_id, text=header + random.choice(affs))
 
 
-async def send_daily_affirmation(context: ContextTypes.DEFAULT_TYPE):
-    cursor.execute("SELECT user_id, language FROM users")
-    for user_id, lang in cursor.fetchall():
-        try:
-            defaults = default_affirmations_fa if lang == "fa" else default_affirmations_en
-            affs = get_affs(user_id) + defaults
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=f"🌞 Time for your affirmation:\n\n{random.choice(affs)}"
-            )
-        except Exception:
-            pass
-
-
-async def send_user_affirmation(context: ContextTypes.DEFAULT_TYPE):
-    user_id = context.job.chat_id
-    lang = get_lang(user_id)
-    defaults = default_affirmations_fa if lang == "fa" else default_affirmations_en
-    affs = get_affs(user_id) + defaults
-    await context.bot.send_message(
-        chat_id=user_id,
-        text=f"⏰ Your affirmation:\n\n{random.choice(affs)}"
-    )
-
-
-async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def set_time(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if not context.args:
-        await update.message.reply_text("Use like this: /settime 09:00")
+        update.message.reply_text(t(user_id,
+            "Example: /settime 08:00",
+            "مثال: /settime 08:00"
+        ))
         return
-    t = context.args[0]
     try:
-        hour, minute = map(int, t.split(":"))
+        hour, minute = map(int, context.args[0].split(":"))
+        assert 0 <= hour <= 23 and 0 <= minute <= 59
     except Exception:
-        await update.message.reply_text("Invalid format. Use HH:MM")
+        update.message.reply_text(t(user_id, "❌ Invalid format. Use HH:MM", "❌ فرمت اشتباه. مثال: 08:00"))
         return
-    cursor.execute("INSERT INTO reminder_times (user_id, time) VALUES (?, ?)", (user_id, t))
-    conn.commit()
+
+    current_jobs = context.job_queue.get_jobs_by_name(str(user_id))
+    for job in current_jobs:
+        job.schedule_removal()
+
     context.job_queue.run_daily(
-        send_user_affirmation,
-        time(hour=hour, minute=minute),
-        chat_id=user_id,
+        send_reminder,
+        time=__import__("datetime").time(hour=hour, minute=minute),
+        context=user_id,
         name=str(user_id)
     )
-    await update.message.reply_text(f"Reminder set for {t} ⏰")
+    update.message.reply_text(t(user_id,
+        f"✅ Reminder set for {hour:02d}:{minute:02d} every day! 🔔",
+        f"✅ یادآور برای ساعت {hour:02d}:{minute:02d} تنظیم شد! 🔔"
+    ))
 
 
-token = "8613051004:AAEfyfqLMq7JS6zTWWCzx9_vhYgWDhO-FT8"
+def cancel_reminder(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    jobs = context.job_queue.get_jobs_by_name(str(user_id))
+    if jobs:
+        for job in jobs:
+            job.schedule_removal()
+        update.message.reply_text(t(user_id, "✅ Reminder cancelled.", "✅ یادآور لغو شد."))
+    else:
+        update.message.reply_text(t(user_id, "No active reminder.", "یادآور فعالی ندارید."))
 
-app = ApplicationBuilder().token(token).build()
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("help", help_command))
-app.add_handler(CommandHandler("language", language))
-app.add_handler(CommandHandler("add", add))
-app.add_handler(CommandHandler("list", list_affirmations))
-app.add_handler(CommandHandler("send", send_affirmation))
-app.add_handler(CommandHandler("settime", set_time))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_language))
+def main():
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not token:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN is not set")
 
-job_queue = app.job_queue
+    updater = Updater(token, use_context=True)
+    dp = updater.dispatcher
 
-job_queue.run_daily(send_daily_affirmation, time(hour=9, minute=0))
-job_queue.run_daily(send_daily_affirmation, time(hour=14, minute=0))
-job_queue.run_daily(send_daily_affirmation, time(hour=20, minute=0))
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("language", language))
+    dp.add_handler(CommandHandler("affirmation", affirmation))
+    dp.add_handler(CommandHandler("add", add))
+    dp.add_handler(CommandHandler("list", list_affirmations))
+    dp.add_handler(CommandHandler("settime", set_time))
+    dp.add_handler(CommandHandler("cancelreminder", cancel_reminder))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, set_language))
 
-cursor.execute("SELECT user_id, time FROM reminder_times")
-for user_id, t in cursor.fetchall():
-    try:
-        hour, minute = map(int, t.split(":"))
-        job_queue.run_daily(
-            send_user_affirmation,
-            time(hour=hour, minute=minute),
-            chat_id=user_id,
-            name=str(user_id)
-        )
-    except Exception:
-        pass
+    print("Bot is running...")
+    updater.start_polling()
+    updater.idle()
 
-print("Bot is running...")
-app.run_polling()
+
+if __name__ == "__main__":
+    main()
