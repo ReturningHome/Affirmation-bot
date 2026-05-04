@@ -74,7 +74,7 @@ def get_affs(user_id):
 
 
 def lang_keyboard():
-return ReplyKeyboardMarkup([["English", "Farsi | فارسی"]], resize_keyboard=True, one_time_keyboard=True)
+return ReplyKeyboardMarkup([["English", "Farsi | فارسی"]] , resize_keyboard=True, one_time_keyboard=True)
 
 def start(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
