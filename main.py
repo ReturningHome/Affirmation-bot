@@ -74,8 +74,7 @@ def get_affs(user_id):
 
 
 def lang_keyboard():
-    return ReplyKeyboardMarkup([["English 🇬🇧", "فارسی 🇮🇷"]], resize_keyboard=True, one_time_keyboard=True)
-
+return ReplyKeyboardMarkup([["English", "Farsi | فارسی"]], resize_keyboard=True, one_time_keyboard=True)
 
 def start(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
@@ -101,8 +100,8 @@ def set_language(update: Update, context: CallbackContext):
         cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", ("en", user_id))
         conn.commit()
         update.message.reply_text("✅ Language set to English!")
-    elif "فارسی" in text:
-        cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", ("fa", user_id))
+elif "Farsi" in text or "فارسی" in text:
+cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", ("fa", user_id))
         conn.commit()
         update.message.reply_text("✅ زبان فارسی انتخاب شد!")
 
