@@ -1,6 +1,7 @@
 import os
 import random
 import sqlite3
+import datetime
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Updater,
@@ -74,7 +75,8 @@ def get_affs(user_id):
 
 
 def lang_keyboard():
-return ReplyKeyboardMarkup([["English", "Farsi | فارسی"]] , resize_keyboard=True, one_time_keyboard=True)
+    return ReplyKeyboardMarkup([["English", "Farsi | فارسی"]] , resize_keyboard=True, one_time_keyboard=True)
+
 
 def start(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
@@ -100,8 +102,8 @@ def set_language(update: Update, context: CallbackContext):
         cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", ("en", user_id))
         conn.commit()
         update.message.reply_text("✅ Language set to English!")
-elif "Farsi" in text or "فارسی" in text:
-cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", ("fa", user_id))
+    elif "Farsi" in text or "فارسی" in text:
+        cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", ("fa", user_id))
         conn.commit()
         update.message.reply_text("✅ زبان فارسی انتخاب شد!")
 
@@ -146,6 +148,20 @@ def send_reminder(context: CallbackContext):
     context.bot.send_message(chat_id=user_id, text=header + random.choice(affs))
 
 
+def send_daily_noon(context: CallbackContext):
+    """Send affirmation to all users at 12pm EAST (UTC-4 = 16:00 UTC)"""
+    cursor.execute("SELECT user_id FROM users")
+    for (user_id,) in cursor.fetchall():
+        try:
+            lang = get_lang(user_id)
+            defaults = default_affirmations_fa if lang == "fa" else default_affirmations_en
+            affs = get_affs(user_id) + defaults
+            header = "☀️ تأییدیه روزانه شما:\n\n" if lang == "fa" else "☀️ Your daily affirmation:\n\n"
+            context.bot.send_message(chat_id=user_id, text=header + random.choice(affs))
+        except Exception:
+            pass
+
+
 def set_time(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if not context.args:
@@ -167,7 +183,7 @@ def set_time(update: Update, context: CallbackContext):
 
     context.job_queue.run_daily(
         send_reminder,
-        time=__import__("datetime").time(hour=hour, minute=minute),
+        time=datetime.time(hour=hour, minute=minute),
         context=user_id,
         name=str(user_id)
     )
@@ -195,6 +211,7 @@ def main():
 
     updater = Updater(token, use_context=True)
     dp = updater.dispatcher
+    jq = updater.job_queue
 
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("language", language))
@@ -204,6 +221,13 @@ def main():
     dp.add_handler(CommandHandler("settime", set_time))
     dp.add_handler(CommandHandler("cancelreminder", cancel_reminder))
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, set_language))
+
+    # Send daily affirmation at 12pm EAST (UTC-4 = 16:00 UTC)
+    jq.run_daily(
+        send_daily_noon,
+        time=datetime.time(hour=16, minute=0),
+        name="daily_noon"
+    )
 
     print("Bot is running...")
     updater.start_polling()
