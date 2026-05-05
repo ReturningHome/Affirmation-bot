@@ -102,20 +102,19 @@ def set_language(update: Update, context: CallbackContext):
         cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", ("en", user_id))
         conn.commit()
         update.message.reply_text("✅ Language set to English!")
-    elif "Farsi" in text or "فارسی" in text:
-    cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", ("fa", user_id))
-    conn.commit()
-    update.message.reply_text(
-        "✅ زبان فارسی انتخاب شد!\n\n"
-        "دستورات:\n"
-        "/language — تغییر زبان\n"
-        "/affirmation — عبارت تأکیدی\n"
-        "/add متن — افزودن عبارت تأکیدی شخصی\n"
-        "/list — دیدن عبارت‌های تأکیدی\n"
-        "/settime 08:00 — تنظیم یادآور روزانه\n"
-        "/cancelreminder — لغو یادآور"
-    )
-
+  elif "Farsi" in text or "فارسی" in text:
+        cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", ("fa", user_id))
+        conn.commit()
+        update.message.reply_text(
+            "✅ زبان فارسی انتخاب شد!\n\n"
+            "دستورات:\n"
+            "/language — تغییر زبان\n"
+            "/affirmation — عبارت تأکیدی\n"
+            "/add متن — افزودن عبارت تأکیدی شخصی\n"
+            "/list — دیدن عبارت‌های تأکیدی\n"
+            "/settime 08:00 — تنظیم یادآور روزانه\n"
+            "/cancelreminder — لغو یادآور"
+        )
 
 def affirmation(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
