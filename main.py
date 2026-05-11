@@ -2,6 +2,7 @@ import os
 import random
 import sqlite3
 import datetime
+import pytz
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Updater,
@@ -11,13 +12,14 @@ from telegram.ext import (
     CallbackContext,
 )
 
+# ── Database ──────────────────────────────────────────────────────────────────
 conn = sqlite3.connect("bot.db", check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
-    language TEXT
+    timezone TEXT DEFAULT 'UTC'
 )
 """)
 
@@ -31,7 +33,8 @@ CREATE TABLE IF NOT EXISTS affirmations (
 
 conn.commit()
 
-default_affirmations_en = [
+# ── Default Affirmations ──────────────────────────────────────────────────────
+DEFAULT_AFFIRMATIONS = [
     "You are capable of amazing things. Believe in yourself today! 🌟",
     "Every day is a fresh start. You have the power to make it great! 🌅",
     "You are enough, just as you are. Keep going! 💪",
@@ -42,184 +45,292 @@ default_affirmations_en = [
     "Today is full of possibilities. Make the most of every moment! 🌈",
     "You are growing every day, even when you can't see it! 🌱",
     "You are loved more than you know. You matter deeply! ❤️",
+    "You have survived every hard day so far. You've got this! 🙌",
+    "Peace and joy are your natural state. Welcome them in! 🕊️",
+    "You are worthy of success and you are working towards it! 🏆",
+    "Good things are coming your way. Stay open and grateful! 🎁",
+    "Your kindness and strength inspire everyone around you! 🌸",
 ]
 
-default_affirmations_fa = [
-    "تو توانایی انجام کارهای شگفت انگیز را داری. به خودت ایمان داشته باش! 🌟",
-    "هر روز یک شروع تازه است. تو قدرت درخشیدن داری! 🌅",
-    "همان طور که هستی کافی هستی. ادامه بده! 💪",
-    "پتانسیل تو بی حد است. بزرگ رویا بپرور و قدم بردار! 🚀",
-    "تو انرژی مثبت داری و چیزهای خوب را به سمت خودت جذب می کنی! ✨",
-    "چالش ها تو را قوی تر می کنند. از پس هر چیزی برمی آیی! 🔥",
-    "تو لایق عشق، شادی و تمام خوبی های زندگی هستی! 💛",
-    "امروز پر از فرصت های جدید است. از هر لحظه بهره ببر! 🌈",
-    "هر روز در حال رشد هستی، حتی وقتی که نمی بینی! 🌱",
-    "بیشتر از آنچه فکر می کنی دوست داشته می شوی. وجودت مهم است! ❤️",
-]
+# ── Common timezones helper ───────────────────────────────────────────────────
+COMMON_TIMEZONES = {
+    "sydney": "Australia/Sydney",
+    "melbourne": "Australia/Melbourne",
+    "brisbane": "Australia/Brisbane",
+    "perth": "Australia/Perth",
+    "adelaide": "Australia/Adelaide",
+    "new york": "America/New_York",
+    "los angeles": "America/Los_Angeles",
+    "chicago": "America/Chicago",
+    "london": "Europe/London",
+    "paris": "Europe/Paris",
+    "dubai": "Asia/Dubai",
+    "tehran": "Asia/Tehran",
+    "tokyo": "Asia/Tokyo",
+    "toronto": "America/Toronto",
+    "utc": "UTC",
+}
 
 
-def get_lang(user_id):
-    cursor.execute("SELECT language FROM users WHERE user_id = ?", (user_id,))
+def get_user(user_id):
+    cursor.execute("SELECT timezone FROM users WHERE user_id = ?", (user_id,))
     row = cursor.fetchone()
-    return row[0] if row else "en"
-
-
-def t(user_id, en, fa):
-    return fa if get_lang(user_id) == "fa" else en
+    if not row:
+        cursor.execute("INSERT INTO users (user_id, timezone) VALUES (?, ?)", (user_id, "UTC"))
+        conn.commit()
+        return "UTC"
+    return row[0]
 
 
 def get_affs(user_id):
     cursor.execute("SELECT text FROM affirmations WHERE user_id = ?", (user_id,))
-    return [r[0] for r in cursor.fetchall()]
+    rows = cursor.fetchall()
+    return [r[0] for r in rows]
 
 
-def lang_keyboard():
-    return ReplyKeyboardMarkup([["English", "Farsi | فارسی"]], resize_keyboard=True, one_time_keyboard=True)
+def random_aff(user_id):
+    custom = get_affs(user_id)
+    pool = custom + DEFAULT_AFFIRMATIONS
+    return random.choice(pool)
 
 
+# ── /start ────────────────────────────────────────────────────────────────────
 def start(update, context):
     user_id = update.message.from_user.id
-    cursor.execute("INSERT OR IGNORE INTO users (user_id, language) VALUES (?, ?)", (user_id, "en"))
-    conn.commit()
-    update.message.reply_text(t(user_id,
-        "🌸 Welcome!\n\nCommands:\n/language — Choose language\n/affirmation — Get affirmation\n/add your text — Add your own\n/list — View your affirmations\n/settime 08:00 — Set daily reminder\n/cancelreminder — Cancel reminder",
-        "🌸 خوش آمدید!\n\nدستورات:\n/language — انتخاب زبان\n/affirmation — دریافت تاییدیه\n/add متن — افزودن تاییدیه\n/list — دیدن تاییدیه ها\n/settime 08:00 — تنظیم یادآور\n/cancelreminder — لغو یادآور"
-    ))
-
-
-def language(update, context):
+    get_user(user_id)
     update.message.reply_text(
-        "Choose your language / زبان خود را انتخاب کنید:",
-        reply_markup=lang_keyboard()
+        "🌸 Welcome to your Daily Affirmation Bot!\n\n"
+        "Here's what I can do:\n\n"
+        "/affirmation — Get an affirmation now\n"
+        "/add I am confident — Add your own affirmation\n"
+        "/list — View your affirmations\n"
+        "/remove 1 — Remove affirmation by number\n"
+        "/settimezone Sydney — Set your timezone\n"
+        "/settime 08:00 once — Get affirmation once a day\n"
+        "/settime 08:00 twice — Get affirmation twice a day (8am + 8pm)\n"
+        "/cancelreminder — Cancel your reminder\n"
+        "/help — Show this menu again"
     )
 
 
-def set_language(update, context):
-    user_id = update.message.from_user.id
-    text = update.message.text
-    if "English" in text:
-        cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", ("en", user_id))
-        conn.commit()
-        update.message.reply_text(
-            "✅ Language set to English!\n\n"
-            "Commands:\n"
-            "/language — Choose language\n"
-            "/affirmation — Get affirmation\n"
-            "/add your text — Add your own\n"
-            "/list — View your affirmations\n"
-            "/settime 08:00 — Set daily reminder\n"
-            "/cancelreminder — Cancel reminder"
-        )
-    elif "Farsi" in text or "فارسی" in text:
-        cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", ("fa", user_id))
-        conn.commit()
-        update.message.reply_text(
-            "✅ زبان فارسی انتخاب شد!\n\n"
-            "دستورات:\n"
-            "/language — انتخاب زبان\n"
-            "/affirmation — دریافت تاییدیه\n"
-            "/add متن — افزودن تاییدیه\n"
-            "/list — دیدن تاییدیه ها\n"
-            "/settime 08:00 — تنظیم یادآور\n"
-            "/cancelreminder — لغو یادآور"
-        )
+# ── /help ─────────────────────────────────────────────────────────────────────
+def help_command(update, context):
+    update.message.reply_text(
+        "🌸 Commands:\n\n"
+        "/affirmation — Get an affirmation now\n"
+        "/add I am confident — Add your own affirmation\n"
+        "/list — View your affirmations\n"
+        "/remove 1 — Remove affirmation by number\n"
+        "/settimezone Sydney — Set your timezone\n"
+        "/settime 08:00 once — Remind once a day\n"
+        "/settime 08:00 twice — Remind twice a day\n"
+        "/cancelreminder — Cancel your reminder"
+    )
 
 
+# ── /affirmation ──────────────────────────────────────────────────────────────
 def affirmation(update, context):
     user_id = update.message.from_user.id
-    lang = get_lang(user_id)
-    defaults = default_affirmations_fa if lang == "fa" else default_affirmations_en
-    affs = get_affs(user_id) + defaults
-    update.message.reply_text(random.choice(affs))
+    update.message.reply_text("🌸 " + random_aff(user_id))
 
 
+# ── /add ──────────────────────────────────────────────────────────────────────
 def add(update, context):
     user_id = update.message.from_user.id
-    text = " ".join(context.args)
+    text = " ".join(context.args).strip()
     if not text:
-        update.message.reply_text(t(user_id,
-            "Please write after /add. Example: /add I am confident",
-            "بعد از /add بنویسید. مثال: /add من قوی هستم"
-        ))
+        update.message.reply_text("Please write your affirmation after /add\nExample: /add I am strong and capable")
         return
     cursor.execute("INSERT INTO affirmations (user_id, text) VALUES (?, ?)", (user_id, text))
     conn.commit()
-    update.message.reply_text(t(user_id, "✅ Added!", "✅ اضافه شد!"))
+    update.message.reply_text(f"✅ Added: \"{text}\"\n\nUse /list to see all your affirmations.")
 
 
+# ── /list ─────────────────────────────────────────────────────────────────────
 def list_affirmations(update, context):
     user_id = update.message.from_user.id
     affs = get_affs(user_id)
     if not affs:
-        update.message.reply_text(t(user_id, "No affirmations yet.", "هنوز تاییدیه ای ندارید."))
+        update.message.reply_text("You haven't added any affirmations yet.\nUse /add to add your own!")
     else:
-        update.message.reply_text("\n".join(f"• {a}" for a in affs))
+        msg = "📋 Your affirmations:\n\n"
+        for i, a in enumerate(affs, 1):
+            msg += f"{i}. {a}\n"
+        msg += "\nUse /remove 1 to remove by number."
+        update.message.reply_text(msg)
 
 
-def send_reminder(context):
-    user_id = context.job.context
-    lang = get_lang(user_id)
-    defaults = default_affirmations_fa if lang == "fa" else default_affirmations_en
-    affs = get_affs(user_id) + defaults
-    header = "🌸 یادآور روزانه:\n\n" if lang == "fa" else "🌸 Your daily affirmation:\n\n"
-    context.bot.send_message(chat_id=user_id, text=header + random.choice(affs))
+# ── /remove ───────────────────────────────────────────────────────────────────
+def remove(update, context):
+    user_id = update.message.from_user.id
+    if not context.args:
+        update.message.reply_text("Please provide the number to remove.\nExample: /remove 1")
+        return
+    try:
+        num = int(context.args[0])
+        affs = get_affs(user_id)
+        if num < 1 or num > len(affs):
+            update.message.reply_text(f"Invalid number. You have {len(affs)} affirmation(s).")
+            return
+        text_to_remove = affs[num - 1]
+        cursor.execute("DELETE FROM affirmations WHERE user_id = ? AND text = ? LIMIT 1", (user_id, text_to_remove))
+        conn.commit()
+        update.message.reply_text(f"✅ Removed: \"{text_to_remove}\"")
+    except Exception:
+        update.message.reply_text("Please provide a valid number. Example: /remove 1")
 
 
-def send_daily_noon(context):
-    cursor.execute("SELECT user_id FROM users")
-    for (user_id,) in cursor.fetchall():
+# ── /settimezone ──────────────────────────────────────────────────────────────
+def set_timezone(update, context):
+    user_id = update.message.from_user.id
+    if not context.args:
+        update.message.reply_text(
+            "Please provide your city or timezone.\n\n"
+            "Examples:\n"
+            "/settimezone Sydney\n"
+            "/settimezone Melbourne\n"
+            "/settimezone London\n"
+            "/settimezone New York\n"
+            "/settimezone Dubai\n"
+            "/settimezone Tehran\n"
+            "/settimezone Tokyo\n"
+            "/settimezone UTC"
+        )
+        return
+
+    tz_input = " ".join(context.args).lower().strip()
+
+    # Check common names first
+    tz_name = COMMON_TIMEZONES.get(tz_input)
+
+    # Try direct pytz lookup
+    if not tz_name:
         try:
-            lang = get_lang(user_id)
-            defaults = default_affirmations_fa if lang == "fa" else default_affirmations_en
-            affs = get_affs(user_id) + defaults
-            header = "☀️ تاییدیه روزانه شما:\n\n" if lang == "fa" else "☀️ Your daily affirmation:\n\n"
-            context.bot.send_message(chat_id=user_id, text=header + random.choice(affs))
+            pytz.timezone(" ".join(context.args))
+            tz_name = " ".join(context.args)
         except Exception:
             pass
 
+    if not tz_name:
+        update.message.reply_text(
+            f"❌ Could not find timezone for \"{' '.join(context.args)}\".\n\n"
+            "Try common cities like:\n"
+            "/settimezone Sydney\n"
+            "/settimezone London\n"
+            "/settimezone New York\n"
+            "/settimezone Dubai\n"
+            "/settimezone Tehran"
+        )
+        return
 
+    cursor.execute("UPDATE users SET timezone = ? WHERE user_id = ?", (tz_name, user_id))
+    conn.commit()
+
+    # Show current time in their timezone
+    tz = pytz.timezone(tz_name)
+    now = datetime.datetime.now(tz).strftime("%I:%M %p")
+    update.message.reply_text(
+        f"✅ Timezone set to {tz_name}!\n"
+        f"Current time there: {now}\n\n"
+        f"Now use /settime 08:00 once or /settime 08:00 twice to set your reminder!"
+    )
+
+
+# ── /settime ──────────────────────────────────────────────────────────────────
 def set_time(update, context):
     user_id = update.message.from_user.id
-    if not context.args:
-        update.message.reply_text(t(user_id,
-            "Example: /settime 08:00",
-            "مثال: /settime 08:00"
-        ))
+    tz_name = get_user(user_id)
+
+    if len(context.args) < 2:
+        update.message.reply_text(
+            "Please provide time and frequency.\n\n"
+            "Examples:\n"
+            "/settime 08:00 once — Once a day at 8am\n"
+            "/settime 08:00 twice — Twice a day at 8am and 8pm\n\n"
+            "Make sure to set your timezone first with /settimezone"
+        )
         return
+
     try:
         hour, minute = map(int, context.args[0].split(":"))
         assert 0 <= hour <= 23 and 0 <= minute <= 59
     except Exception:
-        update.message.reply_text(t(user_id, "Invalid format. Use HH:MM", "فرمت اشتباه. مثال: 08:00"))
+        update.message.reply_text("❌ Invalid time format. Use HH:MM\nExample: /settime 08:00 once")
         return
 
-    current_jobs = context.job_queue.get_jobs_by_name(str(user_id))
-    for job in current_jobs:
+    frequency = context.args[1].lower()
+    if frequency not in ["once", "twice"]:
+        update.message.reply_text("❌ Please use 'once' or 'twice'.\nExample: /settime 08:00 once")
+        return
+
+    # Remove existing jobs
+    for job in context.job_queue.get_jobs_by_name(str(user_id)):
+        job.schedule_removal()
+    for job in context.job_queue.get_jobs_by_name(f"{user_id}_2"):
         job.schedule_removal()
 
+    # Convert user local time to UTC
+    tz = pytz.timezone(tz_name)
+    local_dt = datetime.datetime.now(tz).replace(hour=hour, minute=minute, second=0, microsecond=0)
+    utc_dt = local_dt.astimezone(pytz.utc)
+    utc_hour = utc_dt.hour
+    utc_minute = utc_dt.minute
+
+    # Schedule first reminder
     context.job_queue.run_daily(
         send_reminder,
-        time=datetime.time(hour=hour, minute=minute),
+        time=datetime.time(hour=utc_hour, minute=utc_minute),
         context=user_id,
         name=str(user_id)
     )
-    update.message.reply_text(t(user_id,
-        f"✅ Reminder set for {hour:02d}:{minute:02d} every day! 🔔",
-        f"✅ یادآور برای ساعت {hour:02d}:{minute:02d} تنظیم شد! 🔔"
-    ))
+
+    msg = f"✅ Reminder set for {hour:02d}:{minute:02d} every day ({tz_name})! 🔔"
+
+    if frequency == "twice":
+        # Second reminder 12 hours later
+        evening_hour = (hour + 12) % 24
+        local_dt2 = datetime.datetime.now(tz).replace(hour=evening_hour, minute=minute, second=0, microsecond=0)
+        utc_dt2 = local_dt2.astimezone(pytz.utc)
+
+        context.job_queue.run_daily(
+            send_reminder,
+            time=datetime.time(hour=utc_dt2.hour, minute=utc_dt2.minute),
+            context=user_id,
+            name=f"{user_id}_2"
+        )
+        msg = (
+            f"✅ Reminders set for {hour:02d}:{minute:02d} and "
+            f"{evening_hour:02d}:{minute:02d} every day ({tz_name})! 🔔"
+        )
+
+    update.message.reply_text(msg)
 
 
+# ── /cancelreminder ───────────────────────────────────────────────────────────
 def cancel_reminder(update, context):
     user_id = update.message.from_user.id
-    jobs = context.job_queue.get_jobs_by_name(str(user_id))
+    jobs = (
+        context.job_queue.get_jobs_by_name(str(user_id)) +
+        context.job_queue.get_jobs_by_name(f"{user_id}_2")
+    )
     if jobs:
         for job in jobs:
             job.schedule_removal()
-        update.message.reply_text(t(user_id, "✅ Reminder cancelled.", "✅ یادآور لغو شد."))
+        update.message.reply_text("✅ Your reminder(s) have been cancelled.")
     else:
-        update.message.reply_text(t(user_id, "No active reminder.", "یادآور فعالی ندارید."))
+        update.message.reply_text("You don't have any active reminders.")
 
 
+# ── Reminder callback ─────────────────────────────────────────────────────────
+def send_reminder(context):
+    user_id = context.job.context
+    context.bot.send_message(
+        chat_id=user_id,
+        text="🌸 Your daily affirmation:\n\n" + random_aff(user_id)
+    )
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
 def main():
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
@@ -227,22 +338,16 @@ def main():
 
     updater = Updater(token, use_context=True)
     dp = updater.dispatcher
-    jq = updater.job_queue
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("language", language))
+    dp.add_handler(CommandHandler("help", help_command))
     dp.add_handler(CommandHandler("affirmation", affirmation))
     dp.add_handler(CommandHandler("add", add))
     dp.add_handler(CommandHandler("list", list_affirmations))
+    dp.add_handler(CommandHandler("remove", remove))
+    dp.add_handler(CommandHandler("settimezone", set_timezone))
     dp.add_handler(CommandHandler("settime", set_time))
     dp.add_handler(CommandHandler("cancelreminder", cancel_reminder))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, set_language))
-
-    jq.run_daily(
-        send_daily_noon,
-        time=datetime.time(hour=16, minute=0),
-        name="daily_noon"
-    )
 
     print("Bot is running...")
     updater.start_polling()
